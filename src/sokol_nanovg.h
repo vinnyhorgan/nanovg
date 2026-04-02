@@ -320,8 +320,6 @@ typedef struct SNVGcontext {
 /*=== HELPER FUNCTIONS =======================================================*/
 
 static int snvg__maxi(int a, int b) { return a > b ? a : b; }
-static int snvg__mini(int a, int b) { return a < b ? a : b; }
-
 /* Convert triangle fan vertex count to triangle list vertex count */
 static int snvg__fanToTriCount(int fanCount) {
     if (fanCount < 3) return 0;
