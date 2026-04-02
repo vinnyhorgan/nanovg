@@ -124,8 +124,6 @@ typedef struct snvg_allocator_t {
 } snvg_allocator_t;
 
 typedef struct snvg_desc_t {
-    int max_vertices;
-    int max_commands;
     snvg_allocator_t allocator;
 } snvg_desc_t;
 
@@ -204,7 +202,6 @@ typedef struct SNVGcall {
     int triangleOffset;
     int triangleCount;
     int uniformOffset;
-    sg_blend_state blendFunc;
 } SNVGcall;
 
 typedef struct SNVGpath {
@@ -383,52 +380,9 @@ static int snvg__deleteTexture(SNVGcontext* ctx, int id) {
     return 0;
 }
 
-/*
- * Blend state conversion
- */
-
-static sg_blend_state snvg__blendCompositeOperation(NVGcompositeOperationState op) {
-    sg_blend_factor sfactor, dfactor;
-
-    switch (op.srcRGB) {
-        case NVG_ZERO:                sfactor = SG_BLENDFACTOR_ZERO; break;
-        case NVG_ONE:                 sfactor = SG_BLENDFACTOR_ONE; break;
-        case NVG_SRC_COLOR:           sfactor = SG_BLENDFACTOR_SRC_COLOR; break;
-        case NVG_ONE_MINUS_SRC_COLOR: sfactor = SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR; break;
-        case NVG_DST_COLOR:           sfactor = SG_BLENDFACTOR_DST_COLOR; break;
-        case NVG_ONE_MINUS_DST_COLOR: sfactor = SG_BLENDFACTOR_ONE_MINUS_DST_COLOR; break;
-        case NVG_SRC_ALPHA:           sfactor = SG_BLENDFACTOR_SRC_ALPHA; break;
-        case NVG_ONE_MINUS_SRC_ALPHA: sfactor = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA; break;
-        case NVG_DST_ALPHA:           sfactor = SG_BLENDFACTOR_DST_ALPHA; break;
-        case NVG_ONE_MINUS_DST_ALPHA: sfactor = SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA; break;
-        case NVG_SRC_ALPHA_SATURATE:  sfactor = SG_BLENDFACTOR_SRC_ALPHA_SATURATED; break;
-        default:                      sfactor = SG_BLENDFACTOR_ONE; break;
-    }
-
-    switch (op.dstRGB) {
-        case NVG_ZERO:                dfactor = SG_BLENDFACTOR_ZERO; break;
-        case NVG_ONE:                 dfactor = SG_BLENDFACTOR_ONE; break;
-        case NVG_SRC_COLOR:           dfactor = SG_BLENDFACTOR_SRC_COLOR; break;
-        case NVG_ONE_MINUS_SRC_COLOR: dfactor = SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR; break;
-        case NVG_DST_COLOR:           dfactor = SG_BLENDFACTOR_DST_COLOR; break;
-        case NVG_ONE_MINUS_DST_COLOR: dfactor = SG_BLENDFACTOR_ONE_MINUS_DST_COLOR; break;
-        case NVG_SRC_ALPHA:           dfactor = SG_BLENDFACTOR_SRC_ALPHA; break;
-        case NVG_ONE_MINUS_SRC_ALPHA: dfactor = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA; break;
-        case NVG_DST_ALPHA:           dfactor = SG_BLENDFACTOR_DST_ALPHA; break;
-        case NVG_ONE_MINUS_DST_ALPHA: dfactor = SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA; break;
-        case NVG_SRC_ALPHA_SATURATE:  dfactor = SG_BLENDFACTOR_SRC_ALPHA_SATURATED; break;
-        default:                      dfactor = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA; break;
-    }
-
-    sg_blend_state blend = {
-        .enabled = true,
-        .src_factor_rgb = sfactor,
-        .dst_factor_rgb = dfactor,
-        .src_factor_alpha = sfactor,
-        .dst_factor_alpha = dfactor,
-    };
-    return blend;
-}
+// sokol_gfx requires blend state in pipelines at creation time, so custom
+// composite operations (nvgGlobalCompositeOperation) are not supported.
+// Pipelines use premultiplied alpha (ONE, ONE_MINUS_SRC_ALPHA).
 
 static void snvg__xformToMat3x4(float* m3, float* t) {
     m3[0] = t[0]; m3[1] = t[1]; m3[2] = 0.0f; m3[3] = 0.0f;
@@ -977,7 +931,6 @@ static void snvg__fill(SNVGcontext* ctx, SNVGcall* call) {
     SNVGpath* paths = &ctx->paths[call->pathOffset];
     int i, npaths = call->pathCount;
 
-    // Stencil fill (odd-even rule)
     sg_apply_pipeline(ctx->pip_fill_stencil);
     snvg__setUniforms(ctx, call->uniformOffset, 0);
 
@@ -986,7 +939,6 @@ static void snvg__fill(SNVGcontext* ctx, SNVGcall* call) {
             sg_draw(paths[i].fillOffset, paths[i].fillCount, 1);
     }
 
-    // AA edges
     sg_apply_pipeline(ctx->pip_fill_antialias);
     snvg__setUniforms(ctx, call->uniformOffset + ctx->fragSize, call->image);
 
@@ -997,7 +949,6 @@ static void snvg__fill(SNVGcontext* ctx, SNVGcall* call) {
         }
     }
 
-    // Fill where stencil != 0
     sg_apply_pipeline(ctx->pip_fill_draw);
     snvg__setUniforms(ctx, call->uniformOffset + ctx->fragSize, call->image);
     sg_draw(call->triangleOffset, call->triangleCount, 1);
@@ -1104,7 +1055,7 @@ static void snvg__renderFill(void* uptr, NVGpaint* paint, NVGcompositeOperationS
     if (call->pathOffset == -1) goto error;
     call->pathCount = npaths;
     call->image = paint->image;
-    call->blendFunc = snvg__blendCompositeOperation(compositeOperation);
+    (void)compositeOperation; // sokol_gfx doesn't support per-call blend state
 
     if (npaths == 1 && paths[0].convex) {
         call->type = SNVG_CONVEXFILL;
@@ -1150,13 +1101,11 @@ static void snvg__renderFill(void* uptr, NVGpaint* paint, NVGcompositeOperationS
         call->uniformOffset = snvg__allocFragUniforms(ctx, 2);
         if (call->uniformOffset == -1) goto error;
 
-        /* Simple shader for stencil fill */
         frag = snvg__fragUniformPtr(ctx, call->uniformOffset);
         memset(frag, 0, sizeof(*frag));
         frag->strokeThr = -1.0f;
         frag->type = (float)SNVG_SHADER_SIMPLE;
 
-        /* Fill shader */
         snvg__convertPaint(ctx, snvg__fragUniformPtr(ctx, call->uniformOffset + ctx->fragSize),
                           paint, scissor, fringe, fringe, -1.0f);
     } else {
@@ -1185,9 +1134,8 @@ static void snvg__renderStroke(void* uptr, NVGpaint* paint, NVGcompositeOperatio
     if (call->pathOffset == -1) goto error;
     call->pathCount = npaths;
     call->image = paint->image;
-    call->blendFunc = snvg__blendCompositeOperation(compositeOperation);
+    (void)compositeOperation;
 
-    /* Allocate vertices */
     maxverts = 0;
     for (i = 0; i < npaths; i++) {
         maxverts += paths[i].nstroke;
@@ -1238,16 +1186,14 @@ static void snvg__renderTriangles(void* uptr, NVGpaint* paint, NVGcompositeOpera
 
     call->type = SNVG_TRIANGLES;
     call->image = paint->image;
-    call->blendFunc = snvg__blendCompositeOperation(compositeOperation);
+    (void)compositeOperation;
 
-    /* Allocate vertices */
     call->triangleOffset = snvg__allocVerts(ctx, nverts);
     if (call->triangleOffset == -1) goto error;
     call->triangleCount = nverts;
 
     memcpy(&ctx->verts[call->triangleOffset], verts, sizeof(struct NVGvertex) * nverts);
 
-    /* Allocate uniforms */
     call->uniformOffset = snvg__allocFragUniforms(ctx, 1);
     if (call->uniformOffset == -1) goto error;
 
@@ -1267,7 +1213,6 @@ static void snvg__renderDelete(void* uptr) {
 
     if (ctx == NULL) return;
 
-    /* Destroy textures */
     for (i = 0; i < ctx->ntextures; i++) {
         if (ctx->textures[i].img.id != SG_INVALID_ID) {
             sg_destroy_image(ctx->textures[i].img);
@@ -1278,13 +1223,11 @@ static void snvg__renderDelete(void* uptr) {
         if (ctx->textures[i].smp.id != SG_INVALID_ID) {
             sg_destroy_sampler(ctx->textures[i].smp);
         }
-        /* Free pending data buffer if allocated */
         if (ctx->textures[i].pending_data != NULL) {
             snvg__free(ctx, ctx->textures[i].pending_data);
         }
     }
 
-    /* Destroy sokol resources */
     sg_destroy_buffer(ctx->vbuf);
     sg_destroy_sampler(ctx->default_sampler);
     sg_destroy_image(ctx->dummy_tex);
@@ -1300,7 +1243,6 @@ static void snvg__renderDelete(void* uptr) {
     sg_destroy_pipeline(ctx->pip_triangles);
     sg_destroy_shader(ctx->shader);
 
-    /* Free buffers */
     snvg__free(ctx, ctx->textures);
     snvg__free(ctx, ctx->paths);
     snvg__free(ctx, ctx->verts);
