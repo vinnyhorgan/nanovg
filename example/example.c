@@ -146,7 +146,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
     return (sapp_desc){
         .width = 1000,
         .height = 600,
-        .sample_count = 1,
+        .sample_count = 4,
         .high_dpi = true,
         .window_title = "NanoVG",
         .init_cb = init,
