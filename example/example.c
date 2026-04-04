@@ -2,10 +2,11 @@
 #include <stdio.h>
 
 #define SOKOL_IMPL
-#include "sokol_app.h"
 #include "sokol_gfx.h"
-#include "sokol_glue.h"
 #include "sokol_log.h"
+
+#define GLFW_GLUE_IMPL
+#include "glfw_glue.h"
 
 #include "nanovg.h"
 #define SOKOL_NANOVG_IMPL
@@ -19,11 +20,10 @@ typedef struct {
     DemoData demo;
     PerfGraph fps;
     PerfGraph cpu;
-    double time;
+    double prev_time;
     float mouse_x;
     float mouse_y;
     bool blowup;
-    bool ready;
 } app_state_t;
 
 static app_state_t state;
@@ -68,121 +68,115 @@ static const sg_pass_action pass_action = {
     },
 };
 
-static void init(void) {
-    char window_title[64];
-
-    sg_setup(&(sg_desc){
-        .environment = sglue_environment(),
-        .logger.func = slog_func,
-    });
-
-    snprintf(window_title, sizeof(window_title), "NanoVG (%s)", backend_name(sg_query_backend()));
-    sapp_set_window_title(window_title);
-
-    initGraph(&state.fps, GRAPH_RENDER_FPS, "Frame Time");
-    initGraph(&state.cpu, GRAPH_RENDER_MS, "CPU Time");
-
-    state.vg = nvgCreateSokol(NVG_ANTIALIAS | NVG_STENCIL_STROKES | NVG_DEBUG);
-    if (state.vg == NULL) {
-        fprintf(stderr, "Could not init nanovg.\n");
-        sapp_request_quit();
+static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    (void)scancode;
+    (void)mods;
+    if (action != GLFW_PRESS) {
         return;
     }
-
-    if (loadDemoData(state.vg, &state.demo) == -1) {
-        fprintf(stderr, "Could not load demo assets.\n");
-        sapp_request_quit();
-        return;
-    }
-
-    state.ready = true;
-}
-
-static void frame(void) {
-    const double dt = sapp_frame_duration();
-    const float dpi_scale = sapp_dpi_scale() > 0.0f ? sapp_dpi_scale() : 1.0f;
-    const float fb_width = sapp_widthf();
-    const float fb_height = sapp_heightf();
-    const float win_width = fb_width / dpi_scale;
-    const float win_height = fb_height / dpi_scale;
-
-    if (!state.ready) {
-        return;
-    }
-
-    state.time += dt;
-
-    sg_begin_pass(&(sg_pass){
-        .action = pass_action,
-        .swapchain = sglue_swapchain(),
-    });
-
-    nvgBeginFrame(state.vg, win_width, win_height, dpi_scale);
-    renderDemo(state.vg, state.mouse_x, state.mouse_y, win_width, win_height, (float)state.time, state.blowup, &state.demo);
-    renderGraph(state.vg, 5.0f, 5.0f, &state.fps);
-    renderGraph(state.vg, 210.0f, 5.0f, &state.cpu);
-    nvgEndFrame(state.vg);
-
-    sg_end_pass();
-    sg_commit();
-
-    updateGraph(&state.fps, (float)dt);
-    updateGraph(&state.cpu, (float)(sapp_frame_duration()));
-}
-
-static void cleanup(void) {
-    if (state.vg != NULL) {
-        freeDemoData(state.vg, &state.demo);
-        nvgDeleteSokol(state.vg);
-        state.vg = NULL;
-    }
-    sg_shutdown();
-}
-
-static void event(const sapp_event* ev) {
-    const float dpi_scale = sapp_dpi_scale() > 0.0f ? sapp_dpi_scale() : 1.0f;
-
-    switch (ev->type) {
-    case SAPP_EVENTTYPE_MOUSE_MOVE:
-    case SAPP_EVENTTYPE_MOUSE_DOWN:
-    case SAPP_EVENTTYPE_MOUSE_UP:
-    case SAPP_EVENTTYPE_MOUSE_ENTER:
-        state.mouse_x = ev->mouse_x / dpi_scale;
-        state.mouse_y = ev->mouse_y / dpi_scale;
+    switch (key) {
+    case GLFW_KEY_ESCAPE:
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
         break;
-    case SAPP_EVENTTYPE_KEY_DOWN:
-        if (ev->key_repeat) {
-            break;
-        }
-        switch (ev->key_code) {
-        case SAPP_KEYCODE_ESCAPE:
-            sapp_request_quit();
-            break;
-        case SAPP_KEYCODE_SPACE:
-            state.blowup = !state.blowup;
-            break;
-        default:
-            break;
-        }
+    case GLFW_KEY_SPACE:
+        state.blowup = !state.blowup;
         break;
     default:
         break;
     }
 }
 
-sapp_desc sokol_main(int argc, char* argv[]) {
+static void cursor_pos_callback(GLFWwindow* window, double xpos, double ypos) {
+    (void)window;
+    state.mouse_x = (float)xpos;
+    state.mouse_y = (float)ypos;
+}
+
+int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
-    return (sapp_desc){
+
+    // Initialize GLFW and create window
+    glfw_init(&(glfw_desc_t){
         .width = 1000,
         .height = 600,
         .sample_count = 4,
-        .high_dpi = true,
-        .window_title = "NanoVG",
-        .init_cb = init,
-        .frame_cb = frame,
-        .cleanup_cb = cleanup,
-        .event_cb = event,
+        .swap_interval = 0,
+        .title = "NanoVG",
+    });
+
+    GLFWwindow* window = glfw_window();
+    glfwSetKeyCallback(window, key_callback);
+    glfwSetCursorPosCallback(window, cursor_pos_callback);
+
+    // Setup sokol_gfx
+    sg_setup(&(sg_desc){
+        .environment = glfw_environment(),
         .logger.func = slog_func,
-    };
+    });
+
+    // Update window title with backend name
+    char window_title[64];
+    snprintf(window_title, sizeof(window_title), "NanoVG (%s)", backend_name(sg_query_backend()));
+    glfwSetWindowTitle(window, window_title);
+
+    // Initialize perf graphs
+    initGraph(&state.fps, GRAPH_RENDER_FPS, "Frame Time");
+    initGraph(&state.cpu, GRAPH_RENDER_MS, "CPU Time");
+
+    // Create NanoVG context
+    state.vg = nvgCreateSokol(NVG_ANTIALIAS | NVG_STENCIL_STROKES | NVG_DEBUG);
+    if (state.vg == NULL) {
+        fprintf(stderr, "Could not init nanovg.\n");
+        return -1;
+    }
+
+    // Load demo data
+    if (loadDemoData(state.vg, &state.demo) == -1) {
+        fprintf(stderr, "Could not load demo assets.\n");
+        return -1;
+    }
+
+    state.prev_time = glfwGetTime();
+
+    // Main loop
+    while (!glfwWindowShouldClose(window)) {
+        double curr_time = glfwGetTime();
+        double dt = curr_time - state.prev_time;
+        state.prev_time = curr_time;
+
+        int fb_width = glfw_width();
+        int fb_height = glfw_height();
+        float dpi_scale = glfw_dpi_scale();
+        float win_width = (float)fb_width / dpi_scale;
+        float win_height = (float)fb_height / dpi_scale;
+
+        sg_begin_pass(&(sg_pass){
+            .action = pass_action,
+            .swapchain = glfw_swapchain(),
+        });
+
+        nvgBeginFrame(state.vg, win_width, win_height, dpi_scale);
+        renderDemo(state.vg, state.mouse_x, state.mouse_y, win_width, win_height, (float)curr_time, state.blowup, &state.demo);
+        renderGraph(state.vg, 5.0f, 5.0f, &state.fps);
+        renderGraph(state.vg, 210.0f, 5.0f, &state.cpu);
+        nvgEndFrame(state.vg);
+
+        sg_end_pass();
+        sg_commit();
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+
+        updateGraph(&state.fps, (float)dt);
+        updateGraph(&state.cpu, (float)dt);
+    }
+
+    // Cleanup
+    freeDemoData(state.vg, &state.demo);
+    nvgDeleteSokol(state.vg);
+    sg_shutdown();
+    glfw_shutdown();
+
+    return 0;
 }
