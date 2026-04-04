@@ -3,7 +3,7 @@ NanoVG
 
 NanoVG is a small antialiased vector graphics rendering library with a lean API modeled after the HTML5 canvas API. It is aimed to be a practical and fun toolset for building scalable user interfaces and visualizations.
 
-![Screenshot](example/screenshot.png)
+![Screenshot](example/screenshot.png) ![Browser](example/browser.png)
 
 ## Fork
 
@@ -76,11 +76,28 @@ If rendering is wrong:
 
 ## Building
 
-The project uses a simple Makefile. Currently, only Linux is supported:
+The project uses a simple Makefile. Currently, only Linux is supported for native builds.
+
+### Native (Linux)
 
 ```sh
-make
-./build/example
+make            # Release build
+make debug      # Debug build
+make run        # Build and run
+
+./build/release/example
+```
+
+### Web (WebGL)
+
+Requires [Emscripten](https://emscripten.org/):
+
+```sh
+make web
+
+# Serve locally (WebGL requires a server)
+python3 -m http.server -d build/web
+# Open http://localhost:8000
 ```
 
 ## API Reference
