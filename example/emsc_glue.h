@@ -76,7 +76,7 @@ int emsc_height(void) {
 }
 
 float emsc_dpi_scale(void) {
-    return (float)emscripten_get_device_pixel_ratio();
+    return 1.0f;
 }
 
 sg_environment emsc_environment(void) {

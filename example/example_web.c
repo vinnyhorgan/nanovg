@@ -6,7 +6,6 @@
 #include <stdio.h>
 
 #define SOKOL_IMPL
-#define SOKOL_GLES3
 #include "sokol_gfx.h"
 #include "sokol_log.h"
 
@@ -52,6 +51,7 @@ static const sg_pass_action pass_action = {
 static EM_BOOL mouse_move_cb(int event_type, const EmscriptenMouseEvent* e, void* user_data) {
     (void)event_type;
     (void)user_data;
+    // targetX/Y gives CSS pixel coordinates relative to the canvas element
     state.mouse_x = (float)e->targetX;
     state.mouse_y = (float)e->targetY;
     return EM_TRUE;
