@@ -28,31 +28,6 @@ typedef struct {
 
 static app_state_t state;
 
-static const char* backend_name(sg_backend backend) {
-    switch (backend) {
-    case SG_BACKEND_GLCORE:
-        return "OpenGL Core";
-    case SG_BACKEND_GLES3:
-        return "OpenGL ES 3";
-    case SG_BACKEND_D3D11:
-        return "D3D11";
-    case SG_BACKEND_METAL_IOS:
-        return "Metal iOS";
-    case SG_BACKEND_METAL_MACOS:
-        return "Metal macOS";
-    case SG_BACKEND_METAL_SIMULATOR:
-        return "Metal Simulator";
-    case SG_BACKEND_WGPU:
-        return "WebGPU";
-    case SG_BACKEND_VULKAN:
-        return "Vulkan";
-    case SG_BACKEND_DUMMY:
-        return "Dummy";
-    default:
-        return "Unknown";
-    }
-}
-
 static const sg_pass_action pass_action = {
     .colors[0] = {
         .load_action = SG_LOADACTION_CLEAR,
@@ -102,7 +77,7 @@ int main(int argc, char* argv[]) {
         .height = 600,
         .sample_count = 4,
         .swap_interval = 0,
-        .title = "NanoVG",
+        .title = "NanoVG (OpenGL)",
     });
 
     GLFWwindow* window = glfw_window();
@@ -114,11 +89,6 @@ int main(int argc, char* argv[]) {
         .environment = glfw_environment(),
         .logger.func = slog_func,
     });
-
-    // Update window title with backend name
-    char window_title[64];
-    snprintf(window_title, sizeof(window_title), "NanoVG (%s)", backend_name(sg_query_backend()));
-    glfwSetWindowTitle(window, window_title);
 
     // Initialize perf graphs
     initGraph(&state.fps, GRAPH_RENDER_FPS, "Frame Time");

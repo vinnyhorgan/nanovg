@@ -1,69 +1,82 @@
-CC ?= cc
-AR ?= ar
-BUILD_DIR ?= build
-OBJ_DIR := $(BUILD_DIR)/obj
-MODE ?= debug
+# NanoVG Makefile (Linux)
+#
+# Usage:
+#   make            Build release version
+#   make debug      Build debug version
+#   make run        Build and run release version
+#   make clean      Remove build artifacts
 
-UNAME_S := $(shell uname -s)
+CC := cc
+AR := ar
 
-WARNINGS := -Wall -Wextra
-CPPFLAGS := -Isrc -Iexample -Isokol -MMD -MP
-CFLAGS := -std=c11 $(WARNINGS)
-LDFLAGS :=
-LDLIBS :=
+# Release build settings
+RELEASE_DIR := build/release
+RELEASE_FLAGS := -O2 -DNDEBUG
 
-ifeq ($(MODE),release)
-CPPFLAGS += -DNDEBUG
-CFLAGS += -O2
-else
-CPPFLAGS += -DDEBUG
-CFLAGS += -O0 -g
-endif
+# Debug build settings
+DEBUG_DIR := build/debug
+DEBUG_FLAGS := -O0 -g -DDEBUG
 
-ifeq ($(UNAME_S),Linux)
-	CPPFLAGS += -D_POSIX_C_SOURCE=200809L -DSOKOL_GLCORE
-	LDLIBS += -lglfw -lGL -ldl -lpthread -lm
-else ifeq ($(UNAME_S),Darwin)
-$(error This Makefile currently supports Linux only)
-else
-$(error Unsupported platform: $(UNAME_S))
-endif
+# Common settings
+CFLAGS := -std=c11 -Wall -Wextra
+CPPFLAGS := -Isrc -Iexample -Isokol -D_POSIX_C_SOURCE=200809L -DSOKOL_GLCORE
+LDLIBS := -lglfw -lGL -ldl -lpthread -lm
 
-LIB := $(BUILD_DIR)/libnanovg.a
-EXAMPLE := $(BUILD_DIR)/example
+# Sources
+LIB_SRC := src/nanovg.c
+EXAMPLE_SRC := example/example.c example/demo.c example/perf.c
 
-LIB_SRCS := src/nanovg.c
-LIB_OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(LIB_SRCS))
+# Release objects and targets
+RELEASE_LIB_OBJ := $(RELEASE_DIR)/obj/src/nanovg.o
+RELEASE_EXAMPLE_OBJ := $(patsubst %.c,$(RELEASE_DIR)/obj/%.o,$(EXAMPLE_SRC))
+RELEASE_LIB := $(RELEASE_DIR)/libnanovg.a
+RELEASE_BIN := $(RELEASE_DIR)/example
 
-EXAMPLE_SRCS := example/example.c example/demo.c example/perf.c
-EXAMPLE_OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(EXAMPLE_SRCS))
+# Debug objects and targets
+DEBUG_LIB_OBJ := $(DEBUG_DIR)/obj/src/nanovg.o
+DEBUG_EXAMPLE_OBJ := $(patsubst %.c,$(DEBUG_DIR)/obj/%.o,$(EXAMPLE_SRC))
+DEBUG_LIB := $(DEBUG_DIR)/libnanovg.a
+DEBUG_BIN := $(DEBUG_DIR)/example
 
-DEPS := $(LIB_OBJS:.o=.d) $(EXAMPLE_OBJS:.o=.d)
+.PHONY: all release debug run run-debug clean
 
-.PHONY: all lib example clean run
+all: release
 
-all: example
+release: $(RELEASE_BIN)
 
-lib: $(LIB)
+debug: $(DEBUG_BIN)
 
-example: $(EXAMPLE)
+run: release
+	@./$(RELEASE_BIN)
 
-run: $(EXAMPLE)
-	$(EXAMPLE)
+run-debug: debug
+	@./$(DEBUG_BIN)
 
-$(LIB): $(LIB_OBJS)
+clean:
+	rm -rf build
+
+# Release build rules
+$(RELEASE_LIB): $(RELEASE_LIB_OBJ)
 	@mkdir -p $(dir $@)
 	$(AR) rcs $@ $^
 
-$(EXAMPLE): $(EXAMPLE_OBJS) $(LIB)
+$(RELEASE_BIN): $(RELEASE_EXAMPLE_OBJ) $(RELEASE_LIB)
 	@mkdir -p $(dir $@)
-	$(CC) $(EXAMPLE_OBJS) $(LIB) $(LDFLAGS) $(LDLIBS) -o $@
+	$(CC) $^ $(LDLIBS) -o $@
 
-$(OBJ_DIR)/%.o: %.c
+$(RELEASE_DIR)/obj/%.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(RELEASE_FLAGS) -c $< -o $@
 
-clean:
-	rm -rf $(BUILD_DIR)
+# Debug build rules
+$(DEBUG_LIB): $(DEBUG_LIB_OBJ)
+	@mkdir -p $(dir $@)
+	$(AR) rcs $@ $^
 
--include $(DEPS)
+$(DEBUG_BIN): $(DEBUG_EXAMPLE_OBJ) $(DEBUG_LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $^ $(LDLIBS) -o $@
+
+$(DEBUG_DIR)/obj/%.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(DEBUG_FLAGS) -c $< -o $@
